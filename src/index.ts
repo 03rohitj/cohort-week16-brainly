@@ -1,13 +1,16 @@
 //To install TS version of express, make sure to : npm i @types/express. Same with 'jsonwebtoken' library.
 
 import express from "express";
-import mongoose from "mongoose";
+import mongoose, { ObjectId } from "mongoose";
+const ObjectId = mongoose.Types.ObjectId;
 import jwt from "jsonwebtoken";
 import { z } from "zod";
-import { UserModel } from "./db";
+import { ContentModel, LinkModel, UserModel } from "./db";
 import { genSalt, hash, compare } from "bcrypt-ts";
 const saltRounds = genSalt(10);
-const JWT_KEY:string = "SECRET"
+import { loginAuth } from "./middlewares/login_auth";
+import {JWT_SECRET} from "./config";
+import { random } from "./utils";
 
 const app = express();
 //If we are parsing the body i.e. req.body.username, then we need to use express.json() middleware
@@ -98,7 +101,7 @@ app.post("/api/v1/signin", async (req, res) => {
         console.log("VerifiedPassword : ", passwordVerified);
         if(passwordVerified){
             //Get a token
-            const token = jwt.sign({userId: foundUser._id.toString()}, JWT_KEY);
+            const token = jwt.sign({userId: foundUser._id.toString()}, JWT_SECRET);
             res.status(200).json({
                 "message":"SignIn Successful",
                 "token":token
@@ -125,23 +128,171 @@ app.post("/api/v1/signin", async (req, res) => {
 
 });
 
-app.post("/api/v1/content", (req, res) => {
+//Add new Content
+app.post("/api/v1/content", loginAuth ,async (req, res) => {
+    const { type, link, title, tags } = req.body;
+    //@ts-ignore
+    console.log("Req.UserId : ", req.userId);
 
+    try
+    {
+        const newContent = await ContentModel.create({
+            link: link,
+            type: type,
+            title: title,
+            tags: [],
+            //@ts-ignore
+            userId: req.userId
+        })
+        res.status(200).json({ "message" : "Add Content hit"});
+    }catch( error ){
+        console.error("Add Content Error:  ", error);
+        res.status(500).json({"Error" : error});
+    }
 });
 
-app.get("/api/v1/content", (req, res) => {
+//Fetching all existing documents
+app.get("/api/v1/content", loginAuth, async(req, res) => {
+    //@ts-ignore
+    const userId = req.userId;
+    try{
+        const allContents = await ContentModel.find({
+            userId: userId
+        }).populate("userId", "username");
 
+        console.log("All Content : ", allContents);
+        res.status(200).json({ 
+            "message" : "Fetching all existing documents hit",
+            "Content" : allContents
+        });
+    }catch( error ){
+        console.error("Get All Contents, Error : ", error);
+        res.status(500).json({"Error" : error});
+    }
 });
 
-app.delete("/api/v1/content", (req, res) => {
+//Delete a document(content)
+app.delete("/api/v1/content", loginAuth, async(req, res) => {
+    //@ts-ignore
+    const userId = req.userId;
 
+    try{
+        const contentId = mongoose.Types.ObjectId.createFromHexString(req.body.contentId);
+        const deletedContent = await ContentModel.deleteOne({
+            _id : contentId,
+            userId : userId
+        });
+
+        console.error("Delted Content : ", deletedContent);
+
+        if( deletedContent.deletedCount == 0 ){
+            console.error("Delete a Doc, Error 401 : Doc not found");
+            res.status(403).json({
+                "Error" : "Document not found"
+            }); 
+            return;   
+        }
+        res.status(200).json({ "message" : "Document deleted successfully"});
+    }catch( error ){
+        console.error("Delete a Doc, Error 500 : ", error);
+        res.status(500).json({
+            "Error" : error
+        });
+    }
 });
 
-app.post("/api/v1/brain/share", (req, res) => {
+//Create a shareable link for your second brain
+app.post("/api/v1/brain/share", loginAuth, async(req, res) => {
+    const share:boolean = req.body.share === true || req.body.share === 'True' || req.body.share === 'true';
 
+    try{
+        //@ts-ignore
+        const userId = req.userId;
+        if(share){
+            const existingLink = await LinkModel.findOne({ userId: userId});
+            if(existingLink){
+                res.status(200).json({
+                    message: "Link is already set to shareable",
+                    hash: existingLink.hash
+                });
+                return;
+            }
+
+            //Create a shareable link
+            const newLink = await LinkModel.create({
+                userId: userId,
+                hash: random(10)
+            });
+
+            res.status(200).json({
+                message : "Shareable is set true ",
+                hash : newLink.hash
+            })
+        }else{
+            await LinkModel.deleteOne({
+                userId: userId
+            });
+
+            res.status(200).json({
+                message : "Shareable Link is disabled "
+            })
+        }
+
+        
+    }catch( error ){
+        console.error("Shareable link error : ", error);
+        res.status(500).json({
+            "Error" : error
+        });
+    }
 });
 
-app.get("/api/v1/brain/:shareLink", (req, res) => {
+//Fetch another user's shared brain content
+app.get("/api/v1/brain/:shareLink", async(req, res) => {
+    const hash = req.params.shareLink;
+
+    try {
+        //verify that shared hash is valid or not
+        const validLink = await LinkModel.findOne({
+            hash: hash
+        });
+
+        if(!validLink){
+            res.status(411).json({
+                message: "Error : Incorrect Input"
+            });
+            return;
+        }
+
+        //Link is valid, so fetch user details and it's contents
+        const content = await ContentModel.find({
+            userId: validLink.userId        
+        });
+
+        //Get user also
+        const user = await UserModel.findOne({
+            _id : validLink.userId
+        });
+
+        if(!user){
+            res.status(411).json({
+                message: "User does not exist, error ideally should not happen"
+            });
+
+            return;
+        }
+
+        res.status(200).json({
+            username: user.username,
+            content: content
+        });
+
+    } catch (error) {
+        res.status(404).json({
+            error: error
+        });
+    }
+
 
 });
 
