@@ -23,7 +23,7 @@ const Links = new Schema({
 });
 export const LinkModel = mongoose.model('links', Links);
 
-const contentTypes = ['image', 'video', 'article', 'audio'];
+const contentTypes = ['youtube', 'twitter', 'article', 'audio'];
 
 const Tags = new Schema({
     title: String

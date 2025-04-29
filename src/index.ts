@@ -11,10 +11,12 @@ const saltRounds = genSalt(10);
 import { loginAuth } from "./middlewares/login_auth";
 import {JWT_SECRET} from "./config";
 import { random } from "./utils";
+import cors from "cors";
 
 const app = express();
 //If we are parsing the body i.e. req.body.username, then we need to use express.json() middleware
 app.use(express.json());
+app.use(cors());
 
 const usernameValidation = z.string()
     .min(3, "Username must be atleast 3 characters long")
