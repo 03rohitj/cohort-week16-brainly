@@ -155,11 +155,37 @@ app.post("/api/v1/content", loginAuth ,async (req, res) => {
 
 //Fetching all existing documents
 app.get("/api/v1/content", loginAuth, async(req, res) => {
+    console.log("Fetching all");
+
     //@ts-ignore
     const userId = req.userId;
     try{
         const allContents = await ContentModel.find({
             userId: userId
+        }).populate("userId", "username");
+
+        console.log("All Content : ", allContents);
+        res.status(200).json({ 
+            "message" : "Fetching all existing documents hit",
+            "Content" : allContents
+        });
+    }catch( error ){
+        console.error("Get All Contents, Error : ", error);
+        res.status(500).json({"Error" : error});
+    }
+});
+
+//Fetching specific type of documents
+app.get("/api/v1/content/:type", loginAuth, async(req, res) => {
+    
+    //@ts-ignore
+    const userId = req.userId;
+    const contentType = req.params.type;
+    console.log("Fetching with Params, ContentType : ", contentType);
+    try{
+        const allContents = await ContentModel.find({
+            userId: userId,
+            type: contentType
         }).populate("userId", "username");
 
         console.log("All Content : ", allContents);
@@ -252,7 +278,8 @@ app.post("/api/v1/brain/share", loginAuth, async(req, res) => {
 //Fetch another user's shared brain content
 app.get("/api/v1/brain/:shareLink", async(req, res) => {
     const hash = req.params.shareLink;
-
+    console.log("Fetching SharedBrain : ", hash);
+    
     try {
         //verify that shared hash is valid or not
         const validLink = await LinkModel.findOne({
